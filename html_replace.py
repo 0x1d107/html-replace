@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/python
 from re import compile
 from html.parser import HTMLParser as Parser
 from sys import argv,stdin,stderr,stdout
