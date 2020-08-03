@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/local/bin/python3
 from re import compile
 from html.parser import HTMLParser as Parser
 from sys import argv,stdin,stderr,stdout
@@ -12,15 +12,17 @@ class MyParser(Parser):
         self.attr=attr
         self.replacement=replacement
         self.regex = compile(regex)
+        self.delta_length=0
         super().__init__(*args)
     def feed(self,data):
         self.data = data
+        self.old_data = str(data)
         super().feed(data)
         return self.data
     def handle_starttag(self,tag,attrs):
         if tag == self.tag:
             start_pos = self.getpos()
-            abs_pos = sum([len(line) for line in self.data.splitlines(True)][:start_pos[0]-1])+start_pos[1]
+            abs_pos = sum([len(line) for line in self.old_data.splitlines(True)][:start_pos[0]-1])+start_pos[1]+self.delta_length
             end_pos = abs_pos+len(self.get_starttag_text())
             #print(abs_pos,end_pos, self.data[abs_pos:end_pos])
             new_attrs = OrderedDict(attrs)
@@ -28,6 +30,7 @@ class MyParser(Parser):
                 new_attrs[self.attr]=self.regex.sub(self.replacement,new_attrs[self.attr])
             #print(new_attrs)
             new_tag = '<{} {}>'.format(self.tag,' '.join('{}="{}"'.format(attr,new_attrs[attr]) for attr in new_attrs ))
+            self.delta_length+= len(new_tag) - len(self.get_starttag_text())
             #print(new_tag)
             self.data = replace_str(self.data,abs_pos,end_pos,new_tag)
 argparser = ArgumentParser(description="Replace links matching regex in html file")
@@ -38,7 +41,7 @@ argparser.add_argument('output_file',nargs='?',default='-',help='Name of the out
 args = argparser.parse_args()
 parser = MyParser(args.regex,args.replacement)
 if args.input_file != '-':
-    f = open(args.input_file,'r')
+    f = open(args.input_file,'r',encoding='utf8')
 else:
     f = stdin
 if args.output_file != '-':
