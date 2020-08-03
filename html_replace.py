@@ -4,6 +4,7 @@ from html.parser import HTMLParser as Parser
 from sys import argv,stdin,stderr,stdout
 from collections import OrderedDict 
 from argparse import ArgumentParser
+from html import escape
 def replace_str(old,start,end,new):
     return old[:start]+new+old[end:]
 class MyParser(Parser):
@@ -29,7 +30,7 @@ class MyParser(Parser):
             if self.attr in new_attrs:
                 new_attrs[self.attr]=self.regex.sub(self.replacement,new_attrs[self.attr])
             #print(new_attrs)
-            new_tag = '<{} {}>'.format(self.tag,' '.join('{}="{}"'.format(attr,new_attrs[attr]) for attr in new_attrs ))
+            new_tag = '<{} {}>'.format(self.tag,' '.join('{}="{}"'.format(attr,escape(new_attrs[attr])) for attr in new_attrs ))
             self.delta_length+= len(new_tag) - len(self.get_starttag_text())
             #print(new_tag)
             self.data = replace_str(self.data,abs_pos,end_pos,new_tag)
@@ -45,7 +46,7 @@ if args.input_file != '-':
 else:
     f = stdin
 if args.output_file != '-':
-    g = open(args.output_file,'w')
+    g = open(args.output_file,'w',encoding='utf8')
 else:
     g = stdout
 print(parser.feed(f.read()),end='',file=g)
