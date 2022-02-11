@@ -1,10 +1,13 @@
 #!/usr/bin/python
 from re import compile
+from os.path import curdir,relpath,abspath,basename,dirname
 from html.parser import HTMLParser as Parser
 from sys import argv,stdin,stderr,stdout
 from collections import OrderedDict 
 from argparse import ArgumentParser
 from html import escape
+from tempfile import mktemp
+from shutil import move
 def replace_str(old,start,end,new):
     return old[:start]+new+old[end:]
 class MyParser(Parser):
@@ -17,36 +20,61 @@ class MyParser(Parser):
         super().__init__(*args)
     def feed(self,data):
         self.data = data
+        if not self.replacement:
+            self.data = ''
         self.old_data = str(data)
         super().feed(data)
         return self.data
     def handle_starttag(self,tag,attrs):
         if tag == self.tag:
-            start_pos = self.getpos()
-            abs_pos = sum([len(line) for line in self.old_data.splitlines(True)][:start_pos[0]-1])+start_pos[1]+self.delta_length
-            end_pos = abs_pos+len(self.get_starttag_text())
+
             #print(abs_pos,end_pos, self.data[abs_pos:end_pos])
             new_attrs = OrderedDict(attrs)
             if self.attr in new_attrs:
+                if not self.replacement:
+                    m = self.regex.match(new_attrs[self.attr])
+                    if m:
+                        self.data+=(m[0])+'\n'
+                    return
                 new_attrs[self.attr]=self.regex.sub(self.replacement,new_attrs[self.attr])
+            start_pos = self.getpos()
+            abs_pos = sum([len(line) for line in self.old_data.splitlines(True)][:start_pos[0]-1])+start_pos[1]+self.delta_length
+            end_pos = abs_pos+len(self.get_starttag_text())
             #print(new_attrs)
             new_tag = '<{} {}>'.format(self.tag,' '.join('{}="{}"'.format(attr,escape(new_attrs[attr])) for attr in new_attrs ))
             self.delta_length+= len(new_tag) - len(self.get_starttag_text())
             #print(new_tag)
             self.data = replace_str(self.data,abs_pos,end_pos,new_tag)
 argparser = ArgumentParser(description="Replace links matching regex in html file")
-argparser.add_argument('regex',help='Regular expression for links')
-argparser.add_argument('replacement',help="Text the part of url matching regex will be replaced with. Groups matched with regex can be referenced as \\0, \\1 ,\\2 , ... , etc. Use group 0 for enitre match.")
+argparser.add_argument('-R','--relative-path',action='store_true',dest='relative',help="Replace absolute paths with relative paths")
+argparser.add_argument('-A','--absolute-path',action='store_true',dest='absolute',help="Replace relative paths with absolute paths")
+argparser.add_argument('-i','--in-place',action='store_true',dest='inplace',help="Edit file in-place")
+argparser.add_argument('-t','--tag',default='a',dest='tag',help="Search specified tags instead of <a>")
+argparser.add_argument('-a','--attribute',default='href',dest='attr',help="Search specified attributes instead of href")
+argparser.add_argument('regex',nargs='?',default=r'.*',help='Regular expression for links')
+argparser.add_argument('replacement',nargs='?',help="Text the part of url matching regex will be replaced with. Groups matched with regex can be referenced as \\0, \\1 ,\\2 , ... , etc. Use group 0 for enitre match.")
 argparser.add_argument('input_file',nargs='?',default='-',help='Name of the input file. To use standard input use "-"')
 argparser.add_argument('output_file',nargs='?',default='-',help='Name of the output file. To use standard output use "-"')
 args = argparser.parse_args()
-parser = MyParser(args.regex,args.replacement)
+if args.absolute:
+    args.replacement = lambda x: abspath('./'+x[0])
+if args.relative:
+    args.replacement = lambda x: relpath(abspath('./'+x[0]),dirname(abspath(args.input_file)) if args.input_file != '-' else None)
+
+parser = MyParser(args.regex,args.replacement,tag=args.tag,attr=args.attr)
 if args.input_file != '-':
-    f = open(args.input_file,'r',encoding='utf8')
+    f = open(args.input_file, 'r',encoding='utf8')
 else:
     f = stdin
 if args.output_file != '-':
     g = open(args.output_file,'w',encoding='utf8')
+elif args.inplace:
+    tmp_name = mktemp()
+    tmp = open(tmp_name,'w')
+    g = tmp 
 else:
     g = stdout
 print(parser.feed(f.read()),end='',file=g)
+if args.inplace and args.input_file != '-':
+    tmp.close()
+    move(tmp_name,args.input_file)
